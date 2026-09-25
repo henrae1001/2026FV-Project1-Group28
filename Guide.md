@@ -5,16 +5,16 @@
 
 ## 1. 目前從哪裡開始
 
-- `property/fifo_integrity.sv` 目前只保留 checker module 的 ports 與 bind；尚無 assertion、cover 或 reference model。
-- 舊 Jasper log 對應移除前的 checker，不能當成目前版本的 proof 或 cover 結果。
+- `property/fifo_integrity.sv` 已有 `c_create0`／`c_read` covers、獨立 `ref_count` 與三條 boundary assertions；尚無 reference data FIFO。
+- 每次修改 checker 後，都要重跑 Jasper；先前的 log 不能當成目前版本的 proof 或 cover 結果。
 - 舊版 properties 已移除；請逐條自行重寫並驗證。
 
 七項 FIFO verification 目標不必照列表順序實作：先用簡單 cover 確認 reachability，
 再建立 quantity/conservation 與 boundary safety 的 reference count，接著檢查 state consistency，
 最後用同一個 reference FIFO 檢查 data correctness 與 ordering。Simultaneous operation 應在
 count 和 data 階段都測試；每新增 assertion 就檢查 antecedent reachability 與 vacuity。
-你現在先做 **Step 0–2：記錄版本 → 核對 bind → 自行寫第一條 cover 並執行**，
-再依 Step 3 查看 witness waveform。看到疑似 bug 時可進入 Step 8，無須等其他 properties 全部 proven。
+你現在先完成 **Step 3–4：查看 `c_create0` witness → 重跑 count/boundary assertions**。
+看到疑似 bug 時可進入 Step 8，無須等其他 properties 全部 proven。
 
 ## 2. 檔案地圖：要讀什麼、何時才讀
 
@@ -94,7 +94,8 @@ Formal top 是 `aq_ifu_top`，上游控制與記憶體仍可能影響 FIFO 的 r
 | `idu_ifu_id_stall`、`ctrl_ibuf_pop_en`、`ipack_bypass_vld`、`pop_entry*` | stall/bypass 與下游 data path；六個 FIFO entries、pop-entry 與 direct bypass 要分開看 |
 | `vec_ctrl_reset_mask`、`ibuf_flush_en`、`rtu_yy_xx_dbgon` | 確認三項既有 assumptions 的作用範圍；`vec_ctrl_reset_mask` 在 top 層，不能假設它是 IBUF 內部 signal |
 
-目前 checker 只接了 clock/reset、create/retire enables、empty/full 與 `retire0_en_vld`，尚無 properties。
+目前 checker 只接了 clock/reset、create/retire enables、empty/full 與 `retire0_en_vld`；
+已有 `c_create0`／`c_read` covers、`ref_count` 及三條 boundary assertions。
 新增 data 或 occupancy assertion 時，記得同時擴充 module ports 與 bind connections。
 每筆 data 為 16 bits，六個 entries；同 cycle 最多 3 個 write ports 與 2 個 read ports。
 `createN_en` 與 `createN_data_en` 用途不同，checker 的 transaction event 以前者為準。
@@ -153,9 +154,9 @@ waveform 與疑問向助教釐清，兩套 checker 再共同更新，不私自�
 確認 module ports、bit width、`bind aq_ifu_ibuf` scope，以及 top/clock/reset/assumptions。
 完成：加入第一條 property 後，能成功 analyze/elaborate，且在 IBUF checker instance 下找到它。
 
-### Step 2 — 寫第一條 cover
+### Step 2 — 執行第一條 cover
 
-先自行寫 create0 event 的 cover，再逐條加 read、empty/full、concurrent read/write covers。
+先檢查 `c_create0` 的內容與結果；Step 4 再檢查 `c_read`，後續自行補 empty/full、concurrent read/write covers。
 在 Jasper Tcl Console 的專案根目錄執行 `source script/fifo_integrity.tcl`；`clear -all` 會清除當前 session state。
 若 Jasper 在另一台主機，先確認使用的是本次的 SV/Tcl/RTL 版本。
 完成：保存每條 cover 的結果與 witness；未 `covered` 不等於已證明 `unreachable`。
@@ -170,7 +171,7 @@ SVA 在 rising edge 取樣更新前的值，sequential nonblocking assignment �
 
 以 4-bit `ref_count`（reset=0）及 5-bit 加法計算 enabled writes `w`、reads `r`。
 assert `r <= q`、`q + w <= 6 + r`、`q <= 6`；合法時以 `q_next = q - r + w` 更新。
-完成：underflow/overflow 不能被 model 更新 guard、unsigned wraparound 或額外 assumption 掩蓋。
+完成：`c_read` 的 reachability 已檢查；underflow/overflow 不被 model 更新 guard、unsigned wraparound 或額外 assumption 掩蓋。
 
 ### Step 5 — 寫 occupancy 與 status assertions
 
